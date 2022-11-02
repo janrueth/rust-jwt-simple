@@ -604,7 +604,12 @@ MCowBQYDK2VwAyEAyrRjJfTnhMcW5igzYvPirFW5eUgMdKeClGzQhd4qw+Y=
         let claims = Claims::create(Duration::from_secs(86400));
         let token = key_pair.sign(claims).unwrap();
 
+        #[cfg(not(feature = "no_alloc"))]
         let decoded_metadata = Token::decode_metadata(&token).unwrap();
+        #[cfg(feature = "no_alloc")]
+        let mut header_bytes = [0 as u8; MAX_HEADER_LENGTH];
+        #[cfg(feature = "no_alloc")]
+        let decoded_metadata = Token::decode_metadata(&token, &mut header_bytes).unwrap();
         assert_eq!(
             decoded_metadata.certificate_sha1_thumbprint(),
             Some(thumbprint.as_ref())

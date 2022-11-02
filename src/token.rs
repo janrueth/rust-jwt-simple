@@ -234,6 +234,23 @@ impl Token {
         Ok(claims)
     }
 
+    #[cfg(feature = "no_alloc")]
+    /// Decode token information that can be usedful prior to signature/tag
+    /// verification
+    pub fn decode_metadata(token: &str, header_bytes: &mut [u8]) -> Result<TokenMetadata, Error> {
+        let mut parts = token.split('.');
+        let jwt_header_b64 = parts.next().ok_or(JWTError::CompactEncodingError)?;
+        ensure!(
+            jwt_header_b64.len() <= MAX_HEADER_LENGTH,
+            JWTError::HeaderTooLarge
+        );
+        let jwt_header: JWTHeader = serde_json::from_slice(
+            &Base64UrlSafeNoPadding::decode(header_bytes, jwt_header_b64, None)?,
+        )?;
+        Ok(TokenMetadata { jwt_header })
+    }
+
+    #[cfg(not(feature = "no_alloc"))]
     /// Decode token information that can be usedful prior to signature/tag
     /// verification
     pub fn decode_metadata(token: &str) -> Result<TokenMetadata, Error> {
