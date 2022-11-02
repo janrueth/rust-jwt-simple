@@ -412,6 +412,13 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
             allowed_issuers: Some(HashSet::from_strings(&["test issuer"])),
             ..Default::default()
         };
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0; 128];
+        #[cfg(feature = "no_alloc")]
+        let _claims = key
+            .verify_token::<NoCustomClaims>(&token, Some(options), &mut claim_bytes)
+            .unwrap();
+        #[cfg(not(feature = "no_alloc"))]
         let _claims = key
             .verify_token::<NoCustomClaims>(&token, Some(options))
             .unwrap();
@@ -423,6 +430,11 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
         let claims = Claims::create(Duration::from_secs(86400));
         let token = key_pair.sign(claims).unwrap();
         let pk = RS256PublicKey::from_pem(RSA_PK_PEM).unwrap();
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0; 128];
+        #[cfg(feature = "no_alloc")]
+        let _claims = pk.verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes).unwrap();
+        #[cfg(not(feature = "no_alloc"))]
         let _claims = pk.verify_token::<NoCustomClaims>(&token, None).unwrap();
         let components = pk.to_components();
         let hex_e = Base64::encode_to_string(components.e).unwrap();
@@ -434,6 +446,14 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
         let key_pair = PS384KeyPair::generate(2048).unwrap();
         let claims = Claims::create(Duration::from_secs(86400));
         let token = key_pair.sign(claims).unwrap();
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0; 128];
+        #[cfg(feature = "no_alloc")]
+        let _claims = key_pair
+            .public_key()
+            .verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes)
+            .unwrap();
+        #[cfg(not(feature = "no_alloc"))]
         let _claims = key_pair
             .public_key()
             .verify_token::<NoCustomClaims>(&token, None)
@@ -445,6 +465,13 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
         let key_pair = ES256KeyPair::generate();
         let claims = Claims::create(Duration::from_secs(86400));
         let token = key_pair.sign(claims).unwrap();
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0 as u8; 1024];
+        #[cfg(feature = "no_alloc")]
+        let _claims = key_pair.public_key()
+            .verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes)
+            .unwrap();
+        #[cfg(not(feature = "no_alloc"))]
         let _claims = key_pair
             .public_key()
             .verify_token::<NoCustomClaims>(&token, None)
@@ -456,6 +483,14 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
         let key_pair = ES384KeyPair::generate();
         let claims = Claims::create(Duration::from_secs(86400));
         let token = key_pair.sign(claims).unwrap();
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0 as u8; 1024];
+        #[cfg(feature = "no_alloc")]
+        let _claims = key_pair.public_key()
+            .verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes)
+            .unwrap();
+
+        #[cfg(not(feature = "no_alloc"))]
         let _claims = key_pair
             .public_key()
             .verify_token::<NoCustomClaims>(&token, None)
@@ -467,6 +502,14 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
         let key_pair = ES256kKeyPair::generate();
         let claims = Claims::create(Duration::from_secs(86400));
         let token = key_pair.sign(claims).unwrap();
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0 as u8; 1024];
+        #[cfg(feature = "no_alloc")]
+        let _claims = key_pair.public_key()
+            .verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes)
+            .unwrap();
+
+        #[cfg(not(feature = "no_alloc"))]
         let _claims = key_pair
             .public_key()
             .verify_token::<NoCustomClaims>(&token, None)
@@ -491,10 +534,20 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
             required_key_id: Some(key_id.to_string()),
             ..Default::default()
         };
+        
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0 as u8; 1024];
+        #[cfg(feature = "no_alloc")]
+        let claims: JWTClaims<CustomClaims> = key_pair.public_key()
+            .verify_token::<CustomClaims>(&token, Some(options), &mut claim_bytes)
+            .unwrap();
+
+        #[cfg(not(feature = "no_alloc"))]
         let claims: JWTClaims<CustomClaims> = key_pair
             .public_key()
             .verify_token::<CustomClaims>(&token, Some(options))
             .unwrap();
+        
         assert!(claims.custom.is_custom);
     }
 
@@ -517,8 +570,14 @@ a3t0cyDKinOY7JGIwh8DWAa4pfEzgg56yLcilYSSohXeaQV0nR8+rm9J8GUYXjPK
             required_nonce: Some(nonce),
             ..Default::default()
         };
-        key.verify_token::<NoCustomClaims>(&token, Some(options))
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0; 128];
+        #[cfg(feature = "no_alloc")]
+        key.verify_token::<NoCustomClaims>(&token, Some(options), &mut claim_bytes)
             .unwrap();
+        #[cfg(not(feature = "no_alloc"))]
+        key.verify_token::<NoCustomClaims>(&token, Some(options))
+                .unwrap();
     }
 
     #[test]
@@ -550,6 +609,14 @@ MCowBQYDK2VwAyEAyrRjJfTnhMcW5igzYvPirFW5eUgMdKeClGzQhd4qw+Y=
             decoded_metadata.certificate_sha1_thumbprint(),
             Some(thumbprint.as_ref())
         );
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0 as u8; 1024];
+        #[cfg(feature = "no_alloc")]
+        let _claims: JWTClaims<NoCustomClaims> = key_pair.public_key()
+            .verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes)
+            .unwrap();
+
+        #[cfg(not(feature = "no_alloc"))]
         let _ = key_pair
             .public_key()
             .verify_token::<NoCustomClaims>(&token, None)
@@ -567,8 +634,16 @@ MCowBQYDK2VwAyEAyrRjJfTnhMcW5igzYvPirFW5eUgMdKeClGzQhd4qw+Y=
             time_tolerance: None,
             ..Default::default()
         };
+        #[cfg(feature = "no_alloc")]
+        let mut claim_bytes = [0; 128];
+        #[cfg(feature = "no_alloc")]
+        let claims = key.verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes);
+        #[cfg(not(feature = "no_alloc"))]
         let claims = key.verify_token::<NoCustomClaims>(&token, None);
         assert!(claims.is_ok());
+        #[cfg(feature = "no_alloc")]
+        let claims = key.verify_token::<NoCustomClaims>(&token, Some(options), &mut claim_bytes);
+        #[cfg(not(feature = "no_alloc"))]
         let claims = key.verify_token::<NoCustomClaims>(&token, Some(options));
         assert!(claims.is_err());
     }

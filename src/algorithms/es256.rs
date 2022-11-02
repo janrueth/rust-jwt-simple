@@ -183,6 +183,7 @@ pub trait ECDSAP256PublicKeyLike {
     fn key_id(&self) -> &Option<String>;
     fn set_key_id(&mut self, key_id: String);
 
+    #[cfg(not(feature = "no_alloc"))]
     fn verify_token<CustomClaims: Serialize + DeserializeOwned>(
         &self,
         token: &str,
@@ -203,6 +204,32 @@ pub trait ECDSAP256PublicKeyLike {
                     .map_err(|_| JWTError::InvalidSignature)?;
                 Ok(())
             },
+        )
+    }
+
+    #[cfg(feature = "no_alloc")]
+    fn verify_token<CustomClaims: Serialize + DeserializeOwned>(
+        &self,
+        token: &str,
+        options: Option<VerificationOptions>,
+        claim_bytes: &mut [u8],
+    ) -> Result<JWTClaims<CustomClaims>, Error> {
+        Token::verify::<_,_, 64>(
+            Self::jwt_alg_name(),
+            token,
+            options,
+            |authenticated, signature| {
+                let ecdsa_signature = ecdsa::Signature::try_from(signature)
+                    .map_err(|_| JWTError::InvalidSignature)?;
+                let mut digest = hmac_sha256::Hash::new();
+                digest.update(authenticated.as_bytes());
+                self.public_key()
+                    .as_ref()
+                    .verify_digest(digest, &ecdsa_signature)
+                    .map_err(|_| JWTError::InvalidSignature)?;
+                Ok(())
+            },
+            claim_bytes,
         )
     }
 

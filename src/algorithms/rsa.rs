@@ -181,6 +181,7 @@ pub trait RSAPublicKeyLike {
     fn hash(message: &[u8]) -> Vec<u8>;
     fn padding_scheme(&self) -> rsa::PaddingScheme;
 
+    #[cfg(not(feature = "no_alloc"))]
     fn verify_token<CustomClaims: Serialize + DeserializeOwned>(
         &self,
         token: &str,
@@ -201,6 +202,30 @@ pub trait RSAPublicKeyLike {
         )
     }
 
+    #[cfg(feature = "no_alloc")]
+    fn verify_token<CustomClaims: Serialize + DeserializeOwned>(
+        &self,
+        token: &str,
+        options: Option<VerificationOptions>,
+        claim_bytes: &mut [u8],
+    ) -> Result<JWTClaims<CustomClaims>, Error> {
+
+        Token::verify::<_, _, 1024>(
+            Self::jwt_alg_name(),
+            token,
+            options,
+            |authenticated, signature| {
+                let digest = Self::hash(authenticated.as_bytes());
+                self.public_key()
+                    .as_ref()
+                    .verify(self.padding_scheme(), &digest, signature)
+                    .map_err(|_| JWTError::InvalidSignature)?;
+                Ok(())
+            },
+            claim_bytes,
+        )
+    }
+    
     #[cfg(feature = "cwt")]
     fn verify_cwt_token<CustomClaims: Serialize + DeserializeOwned>(
         &self,

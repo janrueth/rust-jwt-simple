@@ -73,6 +73,7 @@ pub trait MACLike {
         })
     }
 
+    #[cfg(not(feature = "no_alloc"))]
     fn verify_token<CustomClaims: Serialize + DeserializeOwned>(
         &self,
         token: &str,
@@ -89,6 +90,28 @@ pub trait MACLike {
                 );
                 Ok(())
             },
+        )
+    }
+
+    #[cfg(feature = "no_alloc")]
+    fn verify_token<CustomClaims: Serialize + DeserializeOwned>(
+        &self,
+        token: &str,
+        options: Option<VerificationOptions>,
+        claim_bytes: &mut [u8],
+    ) -> Result<JWTClaims<CustomClaims>, Error> {
+        Token::verify::<_, _, 64>(
+            Self::jwt_alg_name(),
+            token,
+            options,
+            |authenticated, authentication_tag| {
+                ensure!(
+                    timingsafe_eq(&self.authentication_tag(authenticated), authentication_tag),
+                    JWTError::InvalidAuthenticationTag
+                );
+                Ok(())
+            },
+            claim_bytes
         )
     }
 

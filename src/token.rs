@@ -119,6 +119,7 @@ impl Token {
         Ok(token)
     }
 
+    #[cfg(not(feature = "no_alloc"))]
     pub(crate) fn verify<AuthenticationOrSignatureFn, CustomClaims: Serialize + DeserializeOwned>(
         jwt_alg_name: &'static str,
         token: &str,
@@ -174,6 +175,65 @@ impl Token {
         Ok(claims)
     }
 
+    #[cfg(feature = "no_alloc")]
+    pub(crate) fn verify<AuthenticationOrSignatureFn, CustomClaims: Serialize + DeserializeOwned, const AUTH_SIZE: usize>(
+        jwt_alg_name: &'static str,
+        token: &str,
+        options: Option<VerificationOptions>,
+        authentication_or_signature_fn: AuthenticationOrSignatureFn,
+        claim_bytes: &mut [u8]
+    ) -> Result<JWTClaims<CustomClaims>, Error>
+    where
+        AuthenticationOrSignatureFn: FnOnce(&str, &[u8]) -> Result<(), Error>,
+    {
+        let options = options.unwrap_or_default();
+
+        if let Some(max_token_length) = options.max_token_length {
+            ensure!(token.len() <= max_token_length, JWTError::TokenTooLong);
+        }
+
+        let mut parts = token.split('.');
+        let jwt_header_b64 = parts.next().ok_or(JWTError::CompactEncodingError)?;
+        ensure!(
+            jwt_header_b64.len() <= MAX_HEADER_LENGTH,
+            JWTError::HeaderTooLarge
+        );
+        let claims_b64 = parts.next().ok_or(JWTError::CompactEncodingError)?;
+        let authentication_tag_b64 = parts.next().ok_or(JWTError::CompactEncodingError)?;
+        ensure!(parts.next().is_none(), JWTError::CompactEncodingError);
+        let mut jwt_header_bytes = [0 as u8; MAX_HEADER_LENGTH];
+        let jwt_header: JWTHeader = serde_json::from_slice(
+            &Base64UrlSafeNoPadding::decode(&mut jwt_header_bytes, jwt_header_b64, None)?,
+        )?;
+        if let Some(signature_type) = &jwt_header.signature_type {
+            let signature_type_uc = signature_type.to_uppercase();
+            ensure!(
+                signature_type_uc == "JWT" || signature_type_uc.ends_with("+JWT"),
+                JWTError::NotJWT
+            );
+        }
+        ensure!(
+            jwt_header.algorithm == jwt_alg_name,
+            JWTError::AlgorithmMismatch
+        );
+        if let Some(required_key_id) = &options.required_key_id {
+            if let Some(key_id) = &jwt_header.key_id {
+                ensure!(key_id == required_key_id, JWTError::KeyIdentifierMismatch);
+            } else {
+                bail!(JWTError::MissingJWTKeyIdentifier)
+            }
+        }
+        let mut authentication_bytes = [0 as u8; AUTH_SIZE];
+        let authentication_tag =
+            Base64UrlSafeNoPadding::decode(&mut authentication_bytes, authentication_tag_b64, None)?;
+        let authenticated = &token[..jwt_header_b64.len() + 1 + claims_b64.len()];
+        authentication_or_signature_fn(authenticated, &authentication_tag)?;
+        let claims: JWTClaims<CustomClaims> =
+            serde_json::from_slice(&Base64UrlSafeNoPadding::decode(claim_bytes, claims_b64, None)?)?;
+        claims.validate(&options)?;
+        Ok(claims)
+    }
+
     /// Decode token information that can be usedful prior to signature/tag
     /// verification
     pub fn decode_metadata(token: &str) -> Result<TokenMetadata, Error> {
@@ -210,6 +270,11 @@ fn should_verify_token() {
         allowed_audiences: Some(HashSet::from_strings(&[audience])),
         ..Default::default()
     };
+    #[cfg(feature = "no_alloc")]
+    let mut claim_bytes = [0 as u8; 1024];
+    #[cfg(feature = "no_alloc")]
+    key.verify_token::<NoCustomClaims>(&token, Some(options), &mut claim_bytes).unwrap();
+    #[cfg(not(feature = "no_alloc"))]
     key.verify_token::<NoCustomClaims>(&token, Some(options))
         .unwrap();
 }
@@ -233,6 +298,11 @@ fn multiple_audiences() {
         allowed_audiences: Some(HashSet::from_strings(&["audience 1"])),
         ..Default::default()
     };
+    #[cfg(feature = "no_alloc")]
+    let mut claim_bytes = [0 as u8; 1024];
+    #[cfg(feature = "no_alloc")]
+    key.verify_token::<NoCustomClaims>(&token, Some(options), &mut claim_bytes).unwrap();
+    #[cfg(not(feature = "no_alloc"))]
     key.verify_token::<NoCustomClaims>(&token, Some(options))
         .unwrap();
 }
@@ -248,16 +318,27 @@ fn explicitly_empty_audiences() {
     let audiences: HashSet<&str> = HashSet::new();
     let claims = Claims::create(Duration::from_mins(10)).with_audiences(audiences);
     let token = key.authenticate(claims).unwrap();
+    #[cfg(feature = "no_alloc")]
+    let mut claim_bytes = [0 as u8; 1024];
+    #[cfg(feature = "no_alloc")]
+    let decoded = key.verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes).unwrap();
+    #[cfg(not(feature = "no_alloc"))]
     let decoded = key.verify_token::<NoCustomClaims>(&token, None).unwrap();
     assert!(decoded.audiences.is_some());
 
     let claims = Claims::create(Duration::from_mins(10)).with_audience("");
     let token = key.authenticate(claims).unwrap();
+    #[cfg(feature = "no_alloc")]
+    let decoded = key.verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes).unwrap();
+    #[cfg(not(feature = "no_alloc"))]
     let decoded = key.verify_token::<NoCustomClaims>(&token, None).unwrap();
     assert!(decoded.audiences.is_some());
 
     let claims = Claims::create(Duration::from_mins(10));
     let token = key.authenticate(claims).unwrap();
+    #[cfg(feature = "no_alloc")]
+    let decoded = key.verify_token::<NoCustomClaims>(&token, None, &mut claim_bytes).unwrap();
+    #[cfg(not(feature = "no_alloc"))]
     let decoded = key.verify_token::<NoCustomClaims>(&token, None).unwrap();
     assert!(decoded.audiences.is_none());
 }

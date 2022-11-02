@@ -22,6 +22,13 @@ fn main() {
     let res = bench.run(options, move || kp.sign(claims.clone()).unwrap());
     println!("rsa-2048 - sign: {}", res.throughput(1));
 
+    #[cfg(feature = "no_alloc")]
+    let mut claim_bytes = [0 as u8; 1024];
+    #[cfg(feature = "no_alloc")]
+    let res = bench.run(options, move || {
+        pk.verify_token::<NoCustomClaims>(&token, Default::default(), &mut claim_bytes)
+    });
+    #[cfg(not(feature = "no_alloc"))]
     let res = bench.run(options, move || {
         pk.verify_token::<NoCustomClaims>(&token, Default::default())
     });
